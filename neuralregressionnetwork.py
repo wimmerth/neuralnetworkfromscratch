@@ -1,7 +1,5 @@
 import numpy as np
-
 from sklearn.metrics import mean_squared_error
-import matplotlib.pyplot as plt
 
 
 def get_activation_function(activation_function, alpha):
@@ -33,12 +31,6 @@ def get_activation_function(activation_function, alpha):
         raise NameError('activation function is unknown')
 
 
-def add_1_column(m: np.array):
-    x = np.ones((m.shape[0], m.shape[1]))
-    x[:, :-1] = m
-    return x
-
-
 # implementation of a neural network that uses MSE for regression.
 # network has variable hidden layers with variable amounts of
 # neurons that are non-linear and one linear output neuron
@@ -55,15 +47,20 @@ class NeuralRegressionNetwork:
         self.act_func, self.act_func_der = get_activation_function(activation_function, alpha)
 
     def initialize_params(self, x_nodes):
+
         rand = lambda x, y: np.random.randn(x, y)
+        # first layer
         self.weight_vectors.append(rand(self.no_of_neurons[0], x_nodes))
         self.bias_vectors.append(rand(self.no_of_neurons[0], 1))
+        # mid layers
         for i in range(1, len(self.no_of_neurons)):
             self.weight_vectors.append(rand(self.no_of_neurons[i], self.no_of_neurons[i - 1]))
             self.bias_vectors.append(rand(self.no_of_neurons[i], 1))
+        # last layer
         self.weight_vectors.append(rand(1, self.no_of_neurons[len(self.no_of_neurons) - 1]))
         self.bias_vectors.append(rand(1, 1))
 
+    # feedForward can also be used as predict function
     def feedForward(self, x):
         z_s = []
         a_s = []
@@ -79,6 +76,7 @@ class NeuralRegressionNetwork:
                     a_s.append(self.act_func(z_s[i]))
         return z_s, a_s
 
+    # perform backward propagation
     def backwardPropagate(self, x, y, a_s):
         m = len(y)
         grads = []
@@ -100,50 +98,48 @@ class NeuralRegressionNetwork:
         b_grads.reverse()
         return grads, b_grads
 
+    # update weights and bias with precomputed gradients
     def update_params(self, grads, b_grads, learning_rate):
         for i in range(len(self.weight_vectors)):
             self.weight_vectors[i] -= learning_rate * grads[i]
             self.bias_vectors[i] -= learning_rate * b_grads[i]
 
-    def train(self, x, y, epochs=100, learning_rate=0.1, x_val=np.array([]), y_val=np.array([])):
+    def train(self, x, y, epochs=100, learning_rate=0.1, x_val=None, y_val=None):
         ls = []
         self.initialize_params(x.shape[0])
-        if epochs == "auto":
+        # perform 100000 learning iterations and return tables with train- and test-errors as well as gradient norms
+        if epochs == "test":
+            if x_val is None or y_val is None:
+                raise ValueError
             es = []
             gs = []
-            while len(ls) < 100000:
+            for i in range(100000):
                 z_s, a_s = self.feedForward(x)
+                # compute MSE on train labels
                 ls.append(mean_squared_error(y, a_s[len(a_s) - 1]))
-
+                # feedForward can be used as prediction function
                 _, ae_s = self.feedForward(x_val)
+                # compute MSE on test labels
                 es.append(mean_squared_error(y_val, ae_s[len(ae_s) - 1]))
-
+                # compute gradients for bias and weights
                 grads, b_grads = self.backwardPropagate(x, y, a_s)
-
-                gs.append(norm(grads[0], b_grads[0]))
-                #if len(ls) > 2 and ls[len(ls) - 1] > ls[len(ls) - 2]:
-                #    break
+                # compute gradient norms
+                n = sum([norm(grads[i], b_grads[i]) for i in range(len(self.weight_vectors))])
+                gs.append(n)
+                # update weights and bias with computed gradients
                 self.update_params(grads, b_grads, learning_rate)
             return ls, es, gs
         else:
-            fig, ax = plt.subplots(dpi=150)
-            x_test = range(-1500, 1500, 5)
-            x_test = np.array(x_test) / 100
-            y_real = np.sinc(x_test/np.pi)
-            ax.plot(x_test, y_real, label='sinc')
             for i in range(epochs):
                 z_s, a_s = self.feedForward(x)
+                # compute MSE on train labels
                 ls.append(mean_squared_error(y, a_s[len(a_s) - 1]))
-                # if i % 1000 == 0:
-                #     x_p = np.reshape(x_test, (-1, 1)).T
-                #     _, a_es = self.feedForward(x_p)
-                #     y_pred = np.reshape(a_es[len(a_s) - 1], -1)
-                #     ax.plot(x_test, y_pred, label='i=' + str(i))
+                # compute gradients for bias and weights
                 grads, b_grads = self.backwardPropagate(x, y, a_s)
+                # update weights and bias with computed gradients
                 self.update_params(grads, b_grads, learning_rate)
-            ax.legend()
             return ls
 
 
 def norm(x, y):
-    return np.sqrt(np.sum(x ** 2,axis=0) + y ** 2)[0]
+    return np.sqrt(np.sum(x ** 2, axis=0) + y ** 2)[0]
