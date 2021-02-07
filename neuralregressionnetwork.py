@@ -31,6 +31,13 @@ def get_activation_function(activation_function, alpha):
         raise NameError('activation function is unknown')
 
 
+def transform(x):
+    if x.ndim == 1:
+        return np.reshape(x, (-1, 1)).T
+    else:
+        return x
+
+
 # implementation of a neural network that uses MSE for regression.
 # network has variable hidden layers with variable amounts of
 # neurons that are non-linear and one linear output neuron
@@ -47,7 +54,6 @@ class NeuralRegressionNetwork:
         self.act_func, self.act_func_der = get_activation_function(activation_function, alpha)
 
     def initialize_params(self, x_nodes):
-
         rand = lambda x, y: np.random.randn(x, y)
         # first layer
         self.weight_vectors.append(rand(self.no_of_neurons[0], x_nodes))
@@ -59,8 +65,21 @@ class NeuralRegressionNetwork:
         # last layer
         self.weight_vectors.append(rand(1, self.no_of_neurons[len(self.no_of_neurons) - 1]))
         self.bias_vectors.append(rand(1, 1))
+        print(len(self.weight_vectors))
 
-    # feedForward can also be used as predict function
+    # using last column of feedForward as prediction
+    def predict(self, x):
+        x = transform(x)
+        _, a_s = self.feedForward(x)
+        return a_s[len(a_s) - 1].T
+
+    # measure score as in common implementations as 1 - MSE
+    def score(self, x, y):
+        x = transform(x)
+        _, a_s = self.feedForward(x)
+        return 1 - mean_squared_error(y, a_s[len(a_s) - 1].T)
+
+    # feed data through network values for neutrons + transformed values after applying activation function
     def feedForward(self, x):
         z_s = []
         a_s = []
@@ -71,6 +90,7 @@ class NeuralRegressionNetwork:
             else:
                 z_s.append(np.dot(self.weight_vectors[i], a_s[i - 1]))
                 if i == len(self.weight_vectors) - 1:
+                    # last layer is linear
                     a_s.append(z_s[i])
                 else:
                     a_s.append(self.act_func(z_s[i]))
@@ -105,15 +125,19 @@ class NeuralRegressionNetwork:
             self.bias_vectors[i] -= learning_rate * b_grads[i]
 
     def train(self, x, y, epochs=100, learning_rate=0.1, x_val=None, y_val=None):
+        x = transform(x)
+        y = transform(y)
         ls = []
         self.initialize_params(x.shape[0])
         # perform 100000 learning iterations and return tables with train- and test-errors as well as gradient norms
         if epochs == "test":
             if x_val is None or y_val is None:
                 raise ValueError
+            x_val = transform(x_val)
+            y_val = transform(y_val)
             es = []
             gs = []
-            for i in range(100000):
+            for i in range(50000):
                 z_s, a_s = self.feedForward(x)
                 # compute MSE on train labels
                 ls.append(mean_squared_error(y, a_s[len(a_s) - 1]))
@@ -142,4 +166,4 @@ class NeuralRegressionNetwork:
 
 
 def norm(x, y):
-    return np.sqrt(np.sum(x ** 2, axis=0) + y ** 2)[0]
+    return np.mean(np.sqrt(np.sum(x ** 2, axis=0) + y ** 2))
