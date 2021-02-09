@@ -65,7 +65,6 @@ class NeuralRegressionNetwork:
         # last layer
         self.weight_vectors.append(rand(1, self.no_of_neurons[len(self.no_of_neurons) - 1]))
         self.bias_vectors.append(rand(1, 1))
-        print(len(self.weight_vectors))
 
     # using last column of feedForward as prediction
     def predict(self, x):
