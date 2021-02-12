@@ -33,9 +33,23 @@ def get_activation_function(activation_function, alpha):
 
 def transform(x):
     if x.ndim == 1:
-        return np.reshape(x, (-1, 1)).T
+        return np.reshape(x, (-1, 1))
     else:
         return x
+
+
+def add_bias(x):
+    y = np.ones((x.shape[0], x.shape[1] + 1))
+    y[:, :-1] = x
+    return y
+
+
+def remove_bias(x):
+    return x[:, :-1]
+
+
+def norm(x):
+    return np.mean(np.sqrt(np.sum(x ** 2, axis=0)))
 
 
 # implementation of a neural network that uses MSE for regression.
@@ -49,86 +63,75 @@ class NeuralRegressionNetwork:
             for i in range(no_of_layers):
                 no_of_neurons.append(5)
         self.no_of_neurons = no_of_neurons
-        self.weight_vectors = []
-        self.bias_vectors = []
+        self.weights = []
         self.act_func, self.act_func_der = get_activation_function(activation_function, alpha)
 
     def initialize_params(self, x_nodes):
         rand = lambda x, y: np.random.randn(x, y)
         # first layer
-        self.weight_vectors.append(rand(self.no_of_neurons[0], x_nodes))
-        self.bias_vectors.append(rand(self.no_of_neurons[0], 1))
+        self.weights.append(rand(x_nodes + 1, self.no_of_neurons[0]))
         # mid layers
         for i in range(1, len(self.no_of_neurons)):
-            self.weight_vectors.append(rand(self.no_of_neurons[i], self.no_of_neurons[i - 1]))
-            self.bias_vectors.append(rand(self.no_of_neurons[i], 1))
+            self.weights.append(rand(self.no_of_neurons[i - 1] + 1, self.no_of_neurons[i]))
         # last layer
-        self.weight_vectors.append(rand(1, self.no_of_neurons[len(self.no_of_neurons) - 1]))
-        self.bias_vectors.append(rand(1, 1))
+        self.weights.append(rand(self.no_of_neurons[len(self.no_of_neurons) - 1] + 1, 1))
 
     # using last column of feedForward as prediction
     def predict(self, x):
         x = transform(x)
-        _, a_s = self.feedForward(x)
-        return a_s[len(a_s) - 1].T
+        a_s = self.feedForward(x)
+        return a_s[len(a_s) - 1]
 
-    # measure score as in common implementations as 1 - MSE
+    # measure score as MSE
     def score(self, x, y):
         x = transform(x)
-        _, a_s = self.feedForward(x)
-        return 1 - mean_squared_error(y, a_s[len(a_s) - 1].T)
+        y = transform(y)
+        a_s = self.feedForward(x)
+        return mean_squared_error(y, a_s[len(a_s) - 1])
 
     # feed data through network values for neutrons + transformed values after applying activation function
     def feedForward(self, x):
-        z_s = []
         a_s = []
-        for i in range(len(self.weight_vectors)):
+        for i in range(len(self.weights)):
             if i == 0:
-                z_s.append(np.dot(self.weight_vectors[0], x) + self.bias_vectors[0])
-                a_s.append(self.act_func(z_s[0]))
+                a_s.append(self.act_func(np.dot(add_bias(x), self.weights[0])))
+            elif i == len(self.weights) - 1:
+                a_s.append(np.dot(add_bias(a_s[i - 1]), self.weights[i]))
             else:
-                z_s.append(np.dot(self.weight_vectors[i], a_s[i - 1]))
-                if i == len(self.weight_vectors) - 1:
-                    # last layer is linear
-                    a_s.append(z_s[i])
-                else:
-                    a_s.append(self.act_func(z_s[i]))
-        return z_s, a_s
+                a_s.append(self.act_func(np.dot(add_bias(a_s[i - 1]), self.weights[i])))
+        return a_s
 
     # perform backward propagation
     def backwardPropagate(self, x, y, a_s):
         m = len(y)
-        grads = []
-        b_grads = []
-        for i in range(len(self.weight_vectors) - 1, -1, -1):
-            if i == len(self.weight_vectors) - 1:
-                dA = 1 / m * (a_s[i] - y)
-                dZ = dA
+        deltas = []
+        derivatives = []
+        for i in range(len(self.weights) - 1, -1, -1):
+            if i == len(self.weights) - 1:
+                # since we use linear output, no use of f'
+                delta = (y - a_s[i]) / m
+                deltas.append(delta)
             else:
-                dA = np.dot(self.weight_vectors[i + 1].T, dZ)
-                dZ = np.multiply(dA, self.act_func_der(a_s[i]))
+                delta = remove_bias(np.dot(deltas[len(deltas) - 1], self.weights[i + 1].T)) * self.act_func_der(a_s[i])
+                deltas.append(delta)
             if i == 0:
-                grads.append(1 / m * np.dot(dZ, x.T))
-                b_grads.append(1 / m * np.sum(dZ, axis=1, keepdims=True))
+                derivatives.append(np.dot(delta.T, add_bias(x)))
             else:
-                grads.append(1 / m * np.dot(dZ, a_s[i - 1].T))
-                b_grads.append(1 / m * np.sum(dZ, axis=1, keepdims=True))
-        grads.reverse()
-        b_grads.reverse()
-        return grads, b_grads
+                derivatives.append(np.dot(delta.T, add_bias(a_s[i - 1])))
+        derivatives.reverse()
+        return derivatives
 
     # update weights and bias with precomputed gradients
-    def update_params(self, grads, b_grads, learning_rate):
-        for i in range(len(self.weight_vectors)):
-            self.weight_vectors[i] -= learning_rate * grads[i]
-            self.bias_vectors[i] -= learning_rate * b_grads[i]
+    def update_params(self, grads, learning_rate):
+        for i in range(len(self.weights)):
+            self.weights[i] += learning_rate * grads[i].T
 
     def train(self, x, y, epochs=100, learning_rate=0.1, x_val=None, y_val=None):
         x = transform(x)
         y = transform(y)
         ls = []
-        self.initialize_params(x.shape[0])
-        # perform 100000 learning iterations and return tables with train- and test-errors as well as gradient norms
+        self.initialize_params(x.shape[1])
+        # perform 50000 learning iterations and return tables with train- and test-errors as well as gradient norms
         if epochs == "test":
             if x_val is None or y_val is None:
                 raise ValueError
@@ -137,32 +140,28 @@ class NeuralRegressionNetwork:
             es = []
             gs = []
             for i in range(50000):
-                z_s, a_s = self.feedForward(x)
+                a_s = self.feedForward(x)
                 # compute MSE on train labels
                 ls.append(mean_squared_error(y, a_s[len(a_s) - 1]))
                 # feedForward can be used as prediction function
-                _, ae_s = self.feedForward(x_val)
+                ae_s = self.feedForward(x_val)
                 # compute MSE on test labels
                 es.append(mean_squared_error(y_val, ae_s[len(ae_s) - 1]))
                 # compute gradients for bias and weights
-                grads, b_grads = self.backwardPropagate(x, y, a_s)
+                ders = self.backwardPropagate(x, y, a_s)
                 # compute gradient norms
-                n = sum([norm(grads[i], b_grads[i]) for i in range(len(self.weight_vectors))])
+                n = sum([norm(ders[i]) for i in range(len(self.weights))])
                 gs.append(n)
                 # update weights and bias with computed gradients
-                self.update_params(grads, b_grads, learning_rate)
+                self.update_params(ders, learning_rate)
             return ls, es, gs
         else:
             for i in range(epochs):
-                z_s, a_s = self.feedForward(x)
+                a_s = self.feedForward(x)
                 # compute MSE on train labels
                 ls.append(mean_squared_error(y, a_s[len(a_s) - 1]))
                 # compute gradients for bias and weights
-                grads, b_grads = self.backwardPropagate(x, y, a_s)
+                ders = self.backwardPropagate(x, y, a_s)
                 # update weights and bias with computed gradients
-                self.update_params(grads, b_grads, learning_rate)
+                self.update_params(ders, learning_rate)
             return ls
-
-
-def norm(x, y):
-    return np.mean(np.sqrt(np.sum(x ** 2, axis=0) + y ** 2))
