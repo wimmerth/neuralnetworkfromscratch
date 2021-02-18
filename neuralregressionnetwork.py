@@ -27,6 +27,10 @@ def get_activation_function(activation_function, alpha):
         act_func = lambda arr: np.where(arr >= 0, arr, alpha * (np.exp(arr) - 1))
         act_func_der = lambda a: np.where(a >= 0, 1, alpha * np.exp(a))
         return act_func, act_func_der
+    elif activation_function == "linear":
+        act_func = lambda a: a
+        act_func_der = lambda a: 1
+        return act_func, act_func_der
     else:
         raise NameError('activation function is unknown')
 
@@ -104,16 +108,12 @@ class NeuralRegressionNetwork:
     # perform backward propagation
     def backwardPropagate(self, x, y, a_s):
         m = len(y)
-        deltas = []
         derivatives = []
         for i in range(len(self.weights) - 1, -1, -1):
             if i == len(self.weights) - 1:
-                # since we use linear output, no use of f'
                 delta = (y - a_s[i]) / m
-                deltas.append(delta)
             else:
-                delta = remove_bias(np.dot(deltas[len(deltas) - 1], self.weights[i + 1].T)) * self.act_func_der(a_s[i])
-                deltas.append(delta)
+                delta = remove_bias(np.dot(delta, self.weights[i + 1].T)) * self.act_func_der(a_s[i])
             if i == 0:
                 derivatives.append(np.dot(delta.T, add_bias(x)))
             else:
